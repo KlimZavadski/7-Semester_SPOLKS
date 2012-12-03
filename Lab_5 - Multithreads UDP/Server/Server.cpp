@@ -54,7 +54,7 @@ bool IsFileExist(string name)
     return FindFirstFileA(filePath.c_str(), &wfd) != INVALID_HANDLE_VALUE;
 }
 
-void GetFileInfo(unsigned long size)
+char* GetFileInfo(unsigned long size)
 {
     unsigned long count = size / blockSize + 1;
     char *info = new char[8];
@@ -69,6 +69,8 @@ void GetFileInfo(unsigned long size)
         info[i] = (char)size;
         size = size >> 8;
     }
+    
+    return info;
 }
 
 void PutProgress(int progress)
@@ -102,6 +104,11 @@ unsigned long TransmitFile(SOCKET serverSocket, string name)
 
     // Send to client size of file and count of packages.
     sBytes = sendto(serverSocket, GetFileInfo(fileSize), 8, 0, (struct sockaddr*)&clientAddress, size);
+    if (sBytes == -1)
+    {
+        printf("\nError: Don't get answer from Client (%d)", WSAGetLastError());
+        return -1;
+    }
 
     printf("\n\tStart sending file with size %d bytes\n\t\tProgress:  0%%", fileSize);
     while(!file.eof())
@@ -114,10 +121,11 @@ unsigned long TransmitFile(SOCKET serverSocket, string name)
         }
         else
         {
-            printf("Answer #%d - %s", progress / 10, buffer[0]);
+            // TODO: if not 1 - error => receive again.
+            file.read(buffer, blockSize);
+            //printf("\n\t\tAnswer #%d - %c", progress / 10, buffer[0]);
         }
 
-        file.read(buffer, blockSize);
         if (fileSize - transmitedBytes > blockSize)
         {
             sBytes = sendto(serverSocket, buffer, blockSize, 0, (struct sockaddr*)&clientAddress, size);

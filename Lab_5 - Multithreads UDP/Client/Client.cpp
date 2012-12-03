@@ -78,6 +78,12 @@ void main()
         return;
     }
 
+    // Setup time out for receive calls.
+    DWORD tr = timeoutRead + 10000;
+    DWORD tw = timeoutWrite + 10000;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (char*)&tr, sizeof(tr));
+    setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, (char*)&tw, sizeof(tw));
+
     sBytes = sendto(clientSocket, info, strlen(info), 0, (struct sockaddr*)&serverAddress, size);
     if (sBytes == -1)
     {
@@ -96,14 +102,9 @@ void main()
     {
         unsigned long fileSize = 0;
         unsigned long packageCount = 0;
+        unsigned long pacakages = 0;
         // Solving size of file and count of packeges.
         GetFileInfo(info, fileSize, packageCount);
-
-        // Setup time out for receive calls.
-        DWORD tr = timeoutRead;
-        DWORD tw = timeoutWrite;
-        //setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (char*)&tr, sizeof(tr));
-        //setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, (char*)&tw, sizeof(tw));
 
         string filePath = path + info;
         ofstream file;
@@ -113,12 +114,12 @@ void main()
         sBytes = sendto(clientSocket, "1", 1, 0, (struct sockaddr*)&serverAddress, size);
         if (sBytes == -1)
         {
-            printf("Error: Invalid sending Ok (%d)\n", WSAGetLastError());
+            printf("Error: Invalid sending Ready for transmitting (%d)\n", WSAGetLastError());
             return;
         }
 
         printf("\n\tStart receiving file.\n\t\t");
-        while (true)
+        while (pacakages < packageCount)
         {
             char *buffer = new char[blockSize];
 
@@ -137,8 +138,16 @@ void main()
                 break;
             }
 
+            pacakages++;
             file.write(buffer, rBytes);
             delete buffer;
+
+            sBytes = sendto(clientSocket, "1", 1, 0, (struct sockaddr*)&serverAddress, size);
+            if (sBytes == -1)
+            {
+                printf("Error: Invalid sending Ready for transmitting (%d)\n", WSAGetLastError());
+                return;
+            }
         }
         file.close();
         //system(filePath.c_str());
