@@ -6,17 +6,18 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <conio.h>
 #include <string>
 #include <fstream>
 #include <ctime>
 #include <iomanip>
 using namespace std;
 
-#define blockSize 1024 * 10
+#define packageSize 10240
 #define timeoutRead 3000
 #define timeoutWrite 5000
 
-const string path = "d:\\1\\Client\\";
+const string path = "d:\\1\\Client_1\\";
 const int port = 2000;
 
 sockaddr_in clientAddress, serverAddress;
@@ -46,18 +47,39 @@ void Initialize()
     }
 }
 
-void GetFileInfo(char *buffer, unsigned long &size, unsigned long &count)
+void PutProgress(int progress)
 {
-    //
+    if (progress > 9)
+    {
+        printf("%c", 0x08);
+    }
+    printf("%c%c%d%%", 0x08, 0x08, progress);
+}
+
+void GetFileInfo(char *info, unsigned long &size, unsigned long &count)
+{
+    size = count = 0;
+
+    for (int i = 0; i < 4; i++)
+    {
+        size <<= 8;
+        size += (unsigned long)(byte)info[i];
+    }
+    for (int i = 4; i < 8; i++)
+    {
+        count <<= 8;
+        count += (unsigned long)(byte)info[i];
+    }
 }
 
 void main()
 {
     Initialize();
     printf("Please, input name of file: ");
-    char *info = new char[blockSize];
+    char *info = new char[packageSize];
     int rBytes, sBytes;
     gets(info);
+    string filePath = path + info;
 
     /* Получаем сокет.
     domain:
@@ -79,8 +101,8 @@ void main()
     }
 
     // Setup time out for receive calls.
-    DWORD tr = timeoutRead + 10000;
-    DWORD tw = timeoutWrite + 10000;
+    DWORD tr = timeoutRead;
+    DWORD tw = timeoutWrite;
     setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (char*)&tr, sizeof(tr));
     setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, (char*)&tw, sizeof(tw));
 
@@ -92,7 +114,7 @@ void main()
     }
 
     // Receive answer from Server about a file.
-    rBytes = recvfrom(clientSocket, info, blockSize, 0, (struct sockaddr*)&serverAddress, &size);
+    rBytes = recvfrom(clientSocket, info, packageSize, 0, (struct sockaddr*)&serverAddress, &size);
     if (rBytes == -1)
     {
         printf("Error: Invalid receiving file length from Server (%d)\n", WSAGetLastError());
@@ -102,15 +124,14 @@ void main()
     {
         unsigned long fileSize = 0;
         unsigned long packageCount = 0;
-        unsigned long pacakages = 0;
-        // Solving size of file and count of packeges.
+        unsigned long packages = 0;
+        // Solving size of file and count of packages.
         GetFileInfo(info, fileSize, packageCount);
 
-        string filePath = path + info;
         ofstream file;
         file.open(filePath.c_str(), ios::out | ios::binary);
         
-        printf("\n\tSend ok.\n\t\t");
+        printf("\n\tReady for receiving file.");
         sBytes = sendto(clientSocket, "1", 1, 0, (struct sockaddr*)&serverAddress, size);
         if (sBytes == -1)
         {
@@ -118,40 +139,45 @@ void main()
             return;
         }
 
-        printf("\n\tStart receiving file.\n\t\t");
-        while (pacakages < packageCount)
+        printf("\n\tStart receiving file with size %d bytes (%d packages).\n\t\tProgress:  0%%", fileSize, packageCount);
+        while (packages < packageCount)
         {
-            char *buffer = new char[blockSize];
+            char *buffer = new char[packageSize];
 
-            int rBytes = recvfrom(clientSocket, buffer, blockSize, 0, (struct sockaddr*)&serverAddress, &size);
+            int rBytes = recvfrom(clientSocket, buffer, packageSize, 0, (struct sockaddr*)&serverAddress, &size);
             if (rBytes == -1)
             {
                 int e = GetLastError();
+                printf("\tError: File don't receive (%d)", WSAGetLastError());
                 if (e == WSAETIMEDOUT)
                 {
-                    puts("\t\nFile receive correctly!");
-                }
-                else
-                {
-                    printf("\tError: File don't receive (%d)\n\n", e);
+                    puts("- Time out!\n");
                 }
                 break;
             }
 
-            pacakages++;
+            packages++;
             file.write(buffer, rBytes);
             delete buffer;
+            PutProgress(packages * 100 / packageCount);
 
             sBytes = sendto(clientSocket, "1", 1, 0, (struct sockaddr*)&serverAddress, size);
             if (sBytes == -1)
             {
+                int e = GetLastError();
                 printf("Error: Invalid sending Ready for transmitting (%d)\n", WSAGetLastError());
-                return;
+                if (e == WSAETIMEDOUT)
+                {
+                    puts("- Time out!\n");
+                }
+                break;
             }
         }
         file.close();
+        printf("\n\tReceiving end correctly.");
         //system(filePath.c_str());
     }
     closesocket(clientSocket);
     WSACleanup();
+    getch();
 }
