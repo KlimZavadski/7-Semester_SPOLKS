@@ -28,9 +28,6 @@ int result = 0;
 void Initialize()
 {
     puts("Initializing.");
-    clientAddress.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
-    clientAddress.sin_family = AF_INET;
-    clientAddress.sin_port = htons(port);
 
     serverAddress.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
     serverAddress.sin_family = AF_INET;
